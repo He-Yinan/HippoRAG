@@ -2,6 +2,9 @@ import os
 from typing import List
 import json
 
+import sys  # TODO: Try removing this
+sys.path.append(os.path.dirname(__file__))
+
 from src.hipporag.HippoRAG import HippoRAG
 from src.hipporag.utils.misc_utils import string_to_bool
 from src.hipporag.utils.config_utils import BaseConfig
@@ -90,6 +93,7 @@ def main():
         save_dir = save_dir + '_' + dataset_name
 
     corpus_path = f"reproduce/dataset/{dataset_name}_corpus.json"
+    # corpus_path = f"HippoRAG/reproduce/dataset/{dataset_name}_corpus.json"  # MINE
     with open(corpus_path, "r") as f:
         corpus = json.load(f)
 
@@ -100,6 +104,7 @@ def main():
 
     # Prepare datasets and evaluation
     samples = json.load(open(f"reproduce/dataset/{dataset_name}.json", "r"))
+    # samples = json.load(open(f"HippoRAG/reproduce/dataset/{dataset_name}.json", "r"))  # MINE
     all_queries = [s['question'] for s in samples]
 
     gold_answers = get_gold_answers(samples)

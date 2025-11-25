@@ -81,6 +81,7 @@ class NVEmbedV2EmbeddingModel(BaseEmbeddingModel):
         logger.debug(f"Calling {self.__class__.__name__} with:\n{params}")
         if len(texts) <= batch_size:
             params["prompts"] = texts  # self._add_eos(texts=texts)
+            print(params)
             results = self.embedding_model.encode(**params)
         else:
             pbar = tqdm(total=len(texts), desc="Batch Encoding")

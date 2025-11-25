@@ -1,7 +1,9 @@
 from typing import Tuple, List
 import torch.cuda
-import outlines.generate as generate
-import outlines.models as models
+# import outlines.generate as generate
+# import outlines.models as models
+from outlines import generate
+from outlines import models
 import json
 
 from .base import BaseLLM, LLMConfig
