@@ -1519,6 +1519,56 @@ class HippoRAG:
         return ppr_sorted_doc_ids, ppr_sorted_doc_scores
 
 
+    # def rerank_facts(self, query: str, query_fact_scores: np.ndarray) -> Tuple[List[int], List[Tuple], dict]:
+    #     """
+
+    #     Args:
+
+    #     Returns:
+    #         top_k_fact_indicies:
+    #         top_k_facts:
+    #         rerank_log (dict): {'facts_before_rerank': candidate_facts, 'facts_after_rerank': top_k_facts}
+    #             - candidate_facts (list): list of link_top_k facts (each fact is a relation triple in tuple data type).
+    #             - top_k_facts:
+
+
+    #     """
+    #     # load args
+    #     link_top_k: int = self.global_config.linking_top_k
+        
+    #     # Check if there are any facts to rerank
+    #     if len(query_fact_scores) == 0 or len(self.fact_node_keys) == 0:
+    #         logger.warning("No facts available for reranking. Returning empty lists.")
+    #         return [], [], {'facts_before_rerank': [], 'facts_after_rerank': []}
+            
+    #     try:
+    #         # Get the top k facts by score
+    #         if len(query_fact_scores) <= link_top_k:
+    #             # If we have fewer facts than requested, use all of them
+    #             candidate_fact_indices = np.argsort(query_fact_scores)[::-1].tolist()
+    #         else:
+    #             # Otherwise get the top k
+    #             candidate_fact_indices = np.argsort(query_fact_scores)[-link_top_k:][::-1].tolist()
+                
+    #         # Get the actual fact IDs
+    #         real_candidate_fact_ids = [self.fact_node_keys[idx] for idx in candidate_fact_indices]
+    #         fact_row_dict = self.fact_embedding_store.get_rows(real_candidate_fact_ids)
+    #         candidate_facts = [eval(fact_row_dict[id]['content']) for id in real_candidate_fact_ids]
+            
+    #         # Rerank the facts
+    #         top_k_fact_indices, top_k_facts, reranker_dict = self.rerank_filter(query,
+    #                                                                             candidate_facts,
+    #                                                                             candidate_fact_indices,
+    #                                                                             len_after_rerank=link_top_k)
+            
+    #         rerank_log = {'facts_before_rerank': candidate_facts, 'facts_after_rerank': top_k_facts}
+            
+    #         return top_k_fact_indices, top_k_facts, rerank_log
+            
+    #     except Exception as e:
+    #         logger.error(f"Error in rerank_facts: {str(e)}")
+    #         return [], [], {'facts_before_rerank': [], 'facts_after_rerank': [], 'error': str(e)}
+
     def rerank_facts(self, query: str, query_fact_scores: np.ndarray) -> Tuple[List[int], List[Tuple], dict]:
         """
 
@@ -1553,15 +1603,90 @@ class HippoRAG:
             # Get the actual fact IDs
             real_candidate_fact_ids = [self.fact_node_keys[idx] for idx in candidate_fact_indices]
             fact_row_dict = self.fact_embedding_store.get_rows(real_candidate_fact_ids)
-            candidate_facts = [eval(fact_row_dict[id]['content']) for id in real_candidate_fact_ids]
+            # Parse fact content safely
+            import ast
+            candidate_facts = []
+            for id in real_candidate_fact_ids:
+                fact_content = fact_row_dict[id]['content']
+                
+                # Log first few fact contents for debugging
+                if len(candidate_facts) < 3:
+                    logger.debug(f"Fact content sample (id={id}): {repr(fact_content[:200])}")
+                
+                # Facts can be stored in multiple formats:
+                # 1. Python tuple string: "('subject', 'predicate', 'object')"
+                # 2. Custom delimiter format: "subject ||| predicate ||| object"
+                # 3. Extended format with relation type: "subject ||| predicate ||| object ||| RELATION_TYPE ||| weight"
+                # 4. JSON format: '["subject", "predicate", "object"]'
+                
+                parsed_fact = None
+                
+                # First, try parsing as "|||" delimited format (most common based on warnings)
+                if isinstance(fact_content, str) and '|||' in fact_content:
+                    parts = [p.strip() for p in fact_content.split('|||')]
+                    if len(parts) >= 3:
+                        # Extract subject, predicate, object (ignore relation_type and weight if present)
+                        parsed_fact = (parts[0], parts[1], parts[2])
+                        if len(candidate_facts) < 3:
+                            logger.debug(f"Parsed ||| format fact: {parsed_fact}")
+                    else:
+                        logger.warning(f"Invalid ||| format fact (parts={len(parts)}): {fact_content[:100]}")
+                
+                # If not ||| format, try JSON
+                if parsed_fact is None:
+                    try:
+                        json_parsed = json.loads(fact_content)
+                        if isinstance(json_parsed, list) and len(json_parsed) >= 3:
+                            parsed_fact = tuple(json_parsed[:3])
+                        elif isinstance(json_parsed, dict):
+                            parsed_fact = (json_parsed.get('subject', ''), 
+                                         json_parsed.get('predicate', ''), 
+                                         json_parsed.get('object', ''))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                # If still not parsed, try ast.literal_eval (for Python tuple strings)
+                if parsed_fact is None:
+                    try:
+                        eval_result = ast.literal_eval(fact_content)
+                        if isinstance(eval_result, (tuple, list)) and len(eval_result) >= 3:
+                            parsed_fact = tuple(eval_result[:3])
+                    except (ValueError, SyntaxError):
+                        pass
+                
+                # Last resort: try eval (less safe)
+                if parsed_fact is None:
+                    try:
+                        eval_result = eval(fact_content)
+                        if isinstance(eval_result, (tuple, list)) and len(eval_result) >= 3:
+                            parsed_fact = tuple(eval_result[:3])
+                    except Exception:
+                        pass
+                
+                # If all parsing failed, log and use raw string
+                if parsed_fact is None:
+                    logger.warning(f"Failed to parse fact content for id {id}. Content preview: {repr(fact_content[:100])}. Using raw string.")
+                    parsed_fact = fact_content
+                candidate_facts.append(parsed_fact)
             
-            # Rerank the facts
-            top_k_fact_indices, top_k_facts, reranker_dict = self.rerank_filter(query,
-                                                                                candidate_facts,
-                                                                                candidate_fact_indices,
-                                                                                len_after_rerank=link_top_k)
-            
-            rerank_log = {'facts_before_rerank': candidate_facts, 'facts_after_rerank': top_k_facts}
+            # Check if reranking is disabled (for debugging/experiments)
+            if hasattr(self.global_config, 'disable_rerank_filter') and self.global_config.disable_rerank_filter:
+                # Skip reranking, just use top N facts directly
+                num_facts_to_use = getattr(self.global_config, 'num_facts_without_rerank', 10)
+                if len(candidate_facts) > num_facts_to_use:
+                    top_k_facts = candidate_facts[:num_facts_to_use]
+                    top_k_fact_indices = candidate_fact_indices[:num_facts_to_use]
+                else:
+                    top_k_facts = candidate_facts
+                    top_k_fact_indices = candidate_fact_indices
+                rerank_log = {'facts_before_rerank': candidate_facts, 'facts_after_rerank': top_k_facts, 'rerank_disabled': True}
+            else:
+                # Rerank the facts
+                top_k_fact_indices, top_k_facts, reranker_dict = self.rerank_filter(query,
+                                                                                    candidate_facts,
+                                                                                    candidate_fact_indices,
+                                                                                    len_after_rerank=link_top_k)
+                rerank_log = {'facts_before_rerank': candidate_facts, 'facts_after_rerank': top_k_facts}
             
             return top_k_fact_indices, top_k_facts, rerank_log
             

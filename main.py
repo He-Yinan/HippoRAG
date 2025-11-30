@@ -70,8 +70,9 @@ def get_gold_answers(samples):
     return gold_answers
 
 def main():
-    parser = argparse.ArgumentParser(description="HippoRAG retrieval and QA")
+    parser = argparse.ArgumentParser(description="hipporag retrieval and QA")
     parser.add_argument('--dataset', type=str, default='musique', help='Dataset name')
+    parser.add_argument('--num_samples', type=int, default=50)
     parser.add_argument('--llm_base_url', type=str, default='https://api.openai.com/v1', help='LLM base URL')
     parser.add_argument('--llm_name', type=str, default='gpt-4o-mini', help='LLM name')
     parser.add_argument('--embedding_name', type=str, default='nvidia/NV-Embed-v2', help='embedding model name')
@@ -80,10 +81,11 @@ def main():
     parser.add_argument('--force_openie_from_scratch', type=str, default='false', help='If set to False, will try to first reuse openie results for the corpus if they exist.')
     parser.add_argument('--openie_mode', choices=['online', 'offline'], default='online',
                         help="OpenIE mode, offline denotes using VLLM offline batch mode for indexing, while online denotes")
-    parser.add_argument('--save_dir', type=str, default='outputs', help='Save directory')
+    parser.add_argument('--save_dir', type=str, default='/n/holylabs/ydu_lab/Lab/yinan/28-results/outputs', help='Save directory')
     args = parser.parse_args()
 
     dataset_name = args.dataset
+    num_samples = args.num_samples
     save_dir = args.save_dir
     llm_base_url = args.llm_base_url
     llm_name = args.llm_name
@@ -92,8 +94,9 @@ def main():
     else:
         save_dir = save_dir + '_' + dataset_name
 
-    corpus_path = f"reproduce/dataset/{dataset_name}_corpus.json"
-    # corpus_path = f"HippoRAG/reproduce/dataset/{dataset_name}_corpus.json"  # MINE
+    # corpus_path = f"reproduce/dataset/{dataset_name}_corpus.json"  # OLD
+    corpus_path = f"/n/holylabs/ydu_lab/Lab/yinan/28-results/datasets/{dataset_name}/subset_{num_samples}/{dataset_name}_corpus.json"
+    # corpus_path = f"hipporag/reproduce/dataset/{dataset_name}_corpus.json"  # MINE
     with open(corpus_path, "r") as f:
         corpus = json.load(f)
 
@@ -103,8 +106,9 @@ def main():
     force_openie_from_scratch = string_to_bool(args.force_openie_from_scratch)
 
     # Prepare datasets and evaluation
-    samples = json.load(open(f"reproduce/dataset/{dataset_name}.json", "r"))
-    # samples = json.load(open(f"HippoRAG/reproduce/dataset/{dataset_name}.json", "r"))  # MINE
+    # samples = json.load(open(f"reproduce/dataset/{dataset_name}.json", "r"))  # OLD
+    samples = json.load(open(f"/n/holylabs/ydu_lab/Lab/yinan/28-results/datasets/{dataset_name}/subset_{num_samples}/{dataset_name}.json", "r"))
+    # samples = json.load(open(f"hipporag/reproduce/dataset/{dataset_name}.json", "r"))  # MINE
     all_queries = [s['question'] for s in samples]
 
     gold_answers = get_gold_answers(samples)
